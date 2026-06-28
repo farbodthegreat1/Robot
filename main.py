@@ -1,10 +1,10 @@
 """
-Entry point — assembles handlers and starts the bot.
-Run with:  python main.py
+Entry point — compatible with python-telegram-bot v20+
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from telegram.ext import (
@@ -26,20 +26,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    # 1. Initialise database
+async def main() -> None:
     db.init_db()
     logger.info("Database ready at %s", config.DATABASE_PATH)
 
-    # 2. Build the Application
     app = Application.builder().token(config.BOT_TOKEN).build()
 
-    # ── Command handlers ──────────────────────────────────────────────────────
     app.add_handler(CommandHandler("start", h.cmd_start))
     app.add_handler(CommandHandler("help",  h.cmd_help))
 
-    # ── Callback query handlers ───────────────────────────────────────────────
-    # Shop navigation
     app.add_handler(CallbackQueryHandler(h.cb_shop,              pattern=r"^shop$"))
     app.add_handler(CallbackQueryHandler(h.cb_rank_selected,     pattern=r"^rank:"))
     app.add_handler(CallbackQueryHandler(h.cb_duration_selected, pattern=r"^dur:"))
@@ -48,11 +43,8 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(h.cb_back_main,         pattern=r"^back_main$"))
     app.add_handler(CallbackQueryHandler(h.cb_my_orders,         pattern=r"^my_orders$"))
     app.add_handler(CallbackQueryHandler(h.cb_help,              pattern=r"^help$"))
+    app.add_handler(CallbackQueryHandler(h.cb_admin_action,      pattern=r"^admin:"))
 
-    # Admin approve / reject
-    app.add_handler(CallbackQueryHandler(h.cb_admin_action, pattern=r"^admin:"))
-
-    # ── Message handler (FSM for text + photos) ───────────────────────────────
     app.add_handler(
         MessageHandler(
             (filters.TEXT | filters.PHOTO) & ~filters.COMMAND,
@@ -60,13 +52,15 @@ def main() -> None:
         )
     )
 
-    # ── Global error handler ──────────────────────────────────────────────────
     app.add_error_handler(h.error_handler)
 
-    # 3. Start polling
     logger.info("Bot is running. Press Ctrl+C to stop.")
-    app.run_polling(allowed_updates=["message", "callback_query"])
+
+    async with app:
+        await app.start()
+        await app.updater.start_polling(allowed_updates=["message", "callback_query"])
+        await asyncio.Event().wait()  # run forever
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
